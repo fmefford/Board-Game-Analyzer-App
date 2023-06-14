@@ -6,22 +6,56 @@ import ReactDOM from 'react-dom/client';
 function App() {
   const [username, setUsername] = useState("");
   const [collection, setCollection] = useState(null);
-  const [time, setTime] = useState(.5);
-  const [players, setPlayers] = useState(1);
-  const [complexity, setComplexity] = useState(1);
+  const [time, setTime] = useState("30");
+  const [players, setPlayers] = useState("1");
+  const [complexity, setComplexity] = useState("1");
 
   function inputBox() {
     async function getCollection() {
-      return await fetch(`https://boardgamegeek.com/xmlapi/collection/${username}`)
+      let xmlCollection = await fetch(`https://boardgamegeek.com/xmlapi2/collection?username=${username}`)
       .then(response => response.text())
-      .then(str => new window.DOMParser().parseFromString(str, "text/xml"))
+      .then(str => new window.DOMParser().parseFromString(str, "text/xml"));
+
+      let jsonGames = [];
+      const games = xmlCollection.documentElement.getElementsByTagName('item'); 
+      const gamesArray = [...games];
+      async function processGameDataWrapper(){
+        async function processGameData(startingPos){
+          for (let index = startingPos; index < gamesArray.length; index++){
+            let id = gamesArray[index].getAttribute('objectid');
+            let extraGameData = await fetch(`https://boardgamegeek.com/xmlapi2/things?id=${id}&stats=1`)
+            .then(response => response.text())
+            .then(str => new window.DOMParser().parseFromString(str, "text/xml"));
+
+            if (extraGameData === null){
+              return index;
+            }
+
+            jsonGames.push({
+              id,
+              time: extraGameData.getElementsByTagName('playingtime')[0].getAttribute('value'),
+              name: extraGameData.getElementsByTagName('name')[0].getAttribute('value'),
+              weight: extraGameData.getElementsByTagName('averageweight')[0].getAttribute('value'),
+              minplayers: extraGameData.getElementsByTagName('minplayers')[0].getAttribute('value'),
+              maxplayers: extraGameData.getElementsByTagName('maxplayers')[0].getAttribute('value')
+            });
+          }
+          return gamesArray.length;
+        }
+
+        let i = await processGameData(0);
+        while (i < gamesArray.length){
+          i = await processGameData(i);
+        }
+      }
+      await processGameDataWrapper();
+      return jsonGames;
     };
 
     async function handleSubmit(event) {
       event.preventDefault();
-      const data = await getCollection();
-      setCollection(data);
-      console.log(data);
+      let jsonGames = await getCollection();
+      await setCollection(jsonGames);
     }
   
     function handleChange(event) {
@@ -45,20 +79,20 @@ function App() {
       console.log(time, players, complexity);
     }
 
-    return (<><div>
+    return (<div key="userprefs"><div>
               Welcome {username}! 
               Tell us about what you would like to play.
             </div><br/>
             <label htmlFor="time">How much time do you have?</label><br/>
             <select name="time" value={time} onChange={(e) => handleChange(e, setTime)}>
-              <option value="0.5">30 mins</option>
-              <option value="1">1 hr</option>
-              <option value="1.5">1 hr 30 mins</option>
-              <option value="2">2 hrs</option>
-              <option value="2.5">2 hr 30 mins</option>
-              <option value="3">3 hrs</option>
-              <option value="3.5">3 hr 30 mins</option>
-              <option value="4">4 hrs</option>
+              <option value="30">30 mins</option>
+              <option value="60">1 hr</option>
+              <option value="90">1 hr 30 mins</option>
+              <option value="120">2 hrs</option>
+              <option value="150">2 hr 30 mins</option>
+              <option value="180">3 hrs</option>
+              <option value="210">3 hr 30 mins</option>
+              <option value="240">4 hrs</option>
             </select><br/>
             
             <label htmlFor="players">How many players do you have?</label><br/>
@@ -84,13 +118,53 @@ function App() {
               <option value="5">Very complex</option>
             </select><br/><br/>
 
-            <button type="button" onClick={handleClick}>Find Games!</button></>);
+            <button type="button" onClick={handleClick}>Find Games!</button></div>);
+  }
+
+  function collectionTable() {
+    let filteredGames = structuredClone(collection);
+    return (
+      <table key="collection">
+        <thead>
+          <tr>
+            <th>Game</th>
+            <th>Playing Time</th>
+            <th>Players</th>
+            <th>Weight</th>
+          </tr>
+        </thead>
+        {filteredGames.map((game, index) => {
+          let id = game["id"];
+          let name = game["name"];
+          let playTime = game["time"];
+          let weight = game["weight"];
+          let minplayers = game["minplayers"];
+          let maxplayers = game["maxplayers"];
+
+          if (Number(playTime) > Number(time) || Number(weight) > Number(complexity) || Number(minplayers) > Number(players) || Number(maxplayers) < Number(players)){
+            return (<></>);
+          }
+          return (<tbody key={id}>
+            <tr key={index}>
+              <td>{name}</td>
+              <td>{playTime}</td>
+              <td>{minplayers} - {maxplayers}</td>
+              <td>{weight}</td>
+            </tr>
+          </tbody>);
+        })}
+      </table>
+    );
+    
   }
 
   if (collection !== null) {
-    return (userPrefs());
+    console.log(collection);
+    return ([userPrefs(), collectionTable()]);
   }
-  return (inputBox());
+  else {
+    return (inputBox());
+  }
 }
 
 export default App;
