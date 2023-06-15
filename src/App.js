@@ -1,6 +1,7 @@
 import logo from './logo.svg';
 import './App.css';
 import React, {useState, useEffect} from 'react';
+import AsyncRetry from 'async-retry';
 import ReactDOM from 'react-dom/client';
 
 function App() {
@@ -19,36 +20,42 @@ function App() {
       let jsonGames = [];
       const games = xmlCollection.documentElement.getElementsByTagName('item'); 
       const gamesArray = [...games];
-      async function processGameDataWrapper(){
-        async function processGameData(startingPos){
-          for (let index = startingPos; index < gamesArray.length; index++){
-            let id = gamesArray[index].getAttribute('objectid');
-            let extraGameData = await fetch(`https://boardgamegeek.com/xmlapi2/things?id=${id}&stats=1`)
-            .then(response => response.text())
-            .then(str => new window.DOMParser().parseFromString(str, "text/xml"));
+      console.log(gamesArray.length);
+      
+      async function processGameData(startingPos){
+        for (let index = 0; index < gamesArray.length; index++){
+          let id = gamesArray[index].getAttribute('objectid');
+          let extraGameData;
 
-            if (extraGameData === null){
-              return index;
+          await AsyncRetry(
+            async (bail) => {
+              extraGameData = await fetch(`https://boardgamegeek.com/xmlapi2/things?id=${id}&stats=1`)
+                .then(response => response.text())
+                .then(str => new window.DOMParser().parseFromString(str, "text/xml"));
+              console.log(extraGameData);
+            }, 
+            {
+              retries: 10,
             }
-
-            jsonGames.push({
-              id,
-              time: extraGameData.getElementsByTagName('playingtime')[0].getAttribute('value'),
-              name: extraGameData.getElementsByTagName('name')[0].getAttribute('value'),
-              weight: extraGameData.getElementsByTagName('averageweight')[0].getAttribute('value'),
-              minplayers: extraGameData.getElementsByTagName('minplayers')[0].getAttribute('value'),
-              maxplayers: extraGameData.getElementsByTagName('maxplayers')[0].getAttribute('value')
-            });
+          );
+          
+          if (extraGameData === null){
+            return index;
           }
-          return gamesArray.length;
-        }
 
-        let i = await processGameData(0);
-        while (i < gamesArray.length){
-          i = await processGameData(i);
+          jsonGames.push({
+            id,
+            time: extraGameData.getElementsByTagName('playingtime')[0].getAttribute('value'),
+            name: extraGameData.getElementsByTagName('name')[0].getAttribute('value'),
+            weight: extraGameData.getElementsByTagName('averageweight')[0].getAttribute('value'),
+            minplayers: extraGameData.getElementsByTagName('minplayers')[0].getAttribute('value'),
+            maxplayers: extraGameData.getElementsByTagName('maxplayers')[0].getAttribute('value')
+          });
         }
+        return gamesArray.length;
       }
-      await processGameDataWrapper();
+  
+      await processGameData();
       return jsonGames;
     };
 
