@@ -1,4 +1,3 @@
-import logo from './logo.svg';
 import './App.css';
 import React, {useState, useEffect} from 'react';
 import AsyncRetry from 'async-retry';
@@ -13,29 +12,30 @@ function App() {
 
   function inputBox() {
     async function getCollection() {
-      let xmlCollection = await fetch(`https://boardgamegeek.com/xmlapi2/collection?username=${username}`)
+      //retrieves user information
+      let xmlCollection = await fetch(`https://boardgamegeek.com/xmlapi2/collection?username=${username}&own=1`)
       .then(response => response.text())
       .then(str => new window.DOMParser().parseFromString(str, "text/xml"));
 
       let jsonGames = [];
-      const games = xmlCollection.documentElement.getElementsByTagName('item'); 
-      const gamesArray = [...games];
-      console.log(gamesArray.length);
+      const gamesArray = [...xmlCollection.documentElement.getElementsByTagName('item')]; 
+      console.log(gamesArray);
       
-      async function processGameData(startingPos){
+      async function processGameData(){
         for (let index = 0; index < gamesArray.length; index++){
           let id = gamesArray[index].getAttribute('objectid');
+          
+          //retrieves additional game data with up to 5 attempts to avoid 429 errors
           let extraGameData;
-
           await AsyncRetry(
-            async (bail) => {
+            async () => {
               extraGameData = await fetch(`https://boardgamegeek.com/xmlapi2/things?id=${id}&stats=1`)
                 .then(response => response.text())
                 .then(str => new window.DOMParser().parseFromString(str, "text/xml"));
-              console.log(extraGameData);
             }, 
             {
               retries: 10,
+              minTimeout: 5000,
             }
           );
           
@@ -45,11 +45,12 @@ function App() {
 
           jsonGames.push({
             id,
-            time: extraGameData.getElementsByTagName('playingtime')[0].getAttribute('value'),
-            name: extraGameData.getElementsByTagName('name')[0].getAttribute('value'),
-            weight: extraGameData.getElementsByTagName('averageweight')[0].getAttribute('value'),
-            minplayers: extraGameData.getElementsByTagName('minplayers')[0].getAttribute('value'),
-            maxplayers: extraGameData.getElementsByTagName('maxplayers')[0].getAttribute('value')
+            time: extraGameData.querySelector('playingtime').getAttribute('value'),
+            name: extraGameData.querySelector('name').getAttribute('value'),
+            weight: extraGameData.querySelector('averageweight').getAttribute('value'),
+            minplayers: extraGameData.querySelector('minplayers').getAttribute('value'),
+            maxplayers: extraGameData.querySelector('maxplayers').getAttribute('value'),
+            bggrating: extraGameData.querySelector('statistics').querySelector('ratings').querySelector('average').getAttribute('value'),
           });
         }
         return gamesArray.length;
@@ -138,6 +139,7 @@ function App() {
             <th>Playing Time</th>
             <th>Players</th>
             <th>Weight</th>
+            <th>BGG Rating</th>
           </tr>
         </thead>
         {filteredGames.map((game, index) => {
@@ -147,6 +149,7 @@ function App() {
           let weight = game["weight"];
           let minplayers = game["minplayers"];
           let maxplayers = game["maxplayers"];
+          let bggrating = game["bggrating"]
 
           if (Number(playTime) > Number(time) || Number(weight) > Number(complexity) || Number(minplayers) > Number(players) || Number(maxplayers) < Number(players)){
             return (<></>);
@@ -157,6 +160,7 @@ function App() {
               <td>{playTime}</td>
               <td>{minplayers} - {maxplayers}</td>
               <td>{weight}</td>
+              <td>{bggrating}</td>
             </tr>
           </tbody>);
         })}
